@@ -17,7 +17,6 @@ type client struct {
 	internalClient *http.Client
 	tracer         opentracing.Tracer
 	inject         kithttp.RequestFunc
-	//	traceMiddleware middleware.RequestFunc
 }
 
 func (c *client) DatabaseRequest(ctx context.Context, dbname string) error {
@@ -32,15 +31,6 @@ func (c *client) DatabaseRequest(ctx context.Context, dbname string) error {
 		return err
 	}
 
-	//middleware.FromHTTPRequest(tracer, operationName)
-
-	//req = c.traceMiddleware(req.WithContext(ctx))
-
-	/*opentracing.GlobalTracer().Inject(
-		span.Context(),
-		opentracing.HTTPHeaders,
-		opentracing.HTTPHeadersCarrier(req.Header),
-	)*/
 	ctx = opentracing.ContextWithSpan(ctx, span)
 	ctx = c.inject(ctx, req)
 

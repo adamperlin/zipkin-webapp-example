@@ -19,15 +19,19 @@ type client struct {
 	URL            string
 	internalClient *http.Client
 	tracer         opentracing.Tracer
-	inject         kithttp.RequestFunc
-	//	traceMiddleware middleware.RequestFunc
+	// now we have some middleware, but for span injection instead of span
+	// extraction
+	inject kithttp.RequestFunc
 }
 
+// We'll make our request function a method of the client
 func (c *client) PasswordRequest(password string, ctx context.Context) error {
+	// We start the span back up from the context passed to the function:
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Password")
 	log.Println("*****\n", span)
 	defer span.Finish()
 
+	// Build our custom url for the password request
 	u := fmt.Sprintf(c.URL+"?passwd=%s", "opensesame")
 	fmt.Println("URL for request is: ", u)
 
@@ -36,22 +40,11 @@ func (c *client) PasswordRequest(password string, ctx context.Context) error {
 		return err
 	}
 
-	//middleware.FromHTTPRequest(tracer, operationName)
-
-	//req = c.traceMiddleware(req.WithContext(ctx))
-
-	/*	opentracing.GlobalTracer().Inject(
-		span.Context(),
-		opentracing.HTTPHeaders,
-		opentracing.HTTPHeadersCarrier(req.Header),
-	)*/
-
-	ctx = opentracing.ContextWithSpan(ctx, span)
-
+	// we inject the spans found in the context into our http request:
 	c.inject(ctx, req)
 
-	//middleware.ToHTTPRequest(tracer)(req.WithContext(ctx))
 	fmt.Println(req.Context())
+	// And we make the request, passing in our context as well.
 	resp, err := c.internalClient.Do(req.WithContext(ctx))
 	if err != nil {
 		span.SetTag("error", err.Error())
@@ -67,7 +60,9 @@ func NewClient(url string, tracer opentracing.Tracer) *client {
 		URL:            url,
 		tracer:         tracer,
 		internalClient: &http.Client{},
-		inject:         tracekit.ContextToHTTP(tracer, kitlog.NewJSONLogger(os.Stdout)),
-		//		traceMiddleware: middleware.ToHTTPRequest(tracer),
+		// Once again, we use our middleware to return a kithttp.RequestFunc
+		// which injects tracing data found in a context.Context into an
+		// http request's headers.
+		inject: tracekit.ContextToHTTP(tracer, kitlog.NewJSONLogger(os.Stdout)),
 	}
 }

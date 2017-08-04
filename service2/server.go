@@ -38,11 +38,6 @@ func (s *server) serviceHandler(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	database := values.Get("table")
 
-	/*wireCtx, err := opentracing.GlobalTracer().Extract(
-		opentracing.HTTPHeaders,
-		opentracing.HTTPHeadersCarrier(r.Header),
-	)*/
-
 	// extract our new context using some middleware
 	ctx := s.extract(
 		r.Context(),

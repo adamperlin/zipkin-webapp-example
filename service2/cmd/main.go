@@ -43,4 +43,5 @@ func main() {
 	server.Start()
 
 	collector.Close()
+
 }
