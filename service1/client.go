@@ -2,34 +2,57 @@ package service1
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"net/http"
+	"os"
 
+	kitlog "github.com/go-kit/kit/log"
+	tracekit "github.com/go-kit/kit/tracing/opentracing"
+	kithttp "github.com/go-kit/kit/transport/http"
 	opentracing "github.com/opentracing/opentracing-go"
-	"github.com/openzipkin/zipkin-go-opentracing/examples/middleware"
 )
 
 const ServiceURL = "http://localhost:4048/password?passwd=%s"
 
 type client struct {
-	URL             string
-	internalClient  *http.Client
-	tracer          opentracing.Tracer
-	traceMiddleware middleware.RequestFunc
+	URL            string
+	internalClient *http.Client
+	tracer         opentracing.Tracer
+	inject         kithttp.RequestFunc
+	//	traceMiddleware middleware.RequestFunc
 }
 
-func (c *client) PasswordRequest(url string, password string, ctx context.Context) error {
+func (c *client) PasswordRequest(password string, ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Password")
+	log.Println("*****\n", span)
 	defer span.Finish()
 
-	req, err := http.NewRequest("POST", c.URL, nil)
+	u := fmt.Sprintf(c.URL+"?passwd=%s", "opensesame")
+	fmt.Println("URL for request is: ", u)
 
+	req, err := http.NewRequest("POST", u, nil)
 	if err != nil {
 		return err
 	}
 
-	req = c.traceMiddleware(req.WithContext(ctx)) //middleware.ToHTTPRequest(tracer)(req.WithContext(ctx))
+	//middleware.FromHTTPRequest(tracer, operationName)
 
-	resp, err := c.internalClient.Do(req)
+	//req = c.traceMiddleware(req.WithContext(ctx))
+
+	/*	opentracing.GlobalTracer().Inject(
+		span.Context(),
+		opentracing.HTTPHeaders,
+		opentracing.HTTPHeadersCarrier(req.Header),
+	)*/
+
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
+	c.inject(ctx, req)
+
+	//middleware.ToHTTPRequest(tracer)(req.WithContext(ctx))
+	fmt.Println(req.Context())
+	resp, err := c.internalClient.Do(req.WithContext(ctx))
 	if err != nil {
 		span.SetTag("error", err.Error())
 		return err
@@ -41,9 +64,10 @@ func (c *client) PasswordRequest(url string, password string, ctx context.Contex
 
 func NewClient(url string, tracer opentracing.Tracer) *client {
 	return &client{
-		URL:             url,
-		tracer:          tracer,
-		internalClient:  &http.Client{},
-		traceMiddleware: middleware.ToHTTPRequest(tracer),
+		URL:            url,
+		tracer:         tracer,
+		internalClient: &http.Client{},
+		inject:         tracekit.ContextToHTTP(tracer, kitlog.NewJSONLogger(os.Stdout)),
+		//		traceMiddleware: middleware.ToHTTPRequest(tracer),
 	}
 }
